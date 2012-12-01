@@ -245,7 +245,8 @@ static void aThread (void* arg) {
   thread->isolate->Dispose();
 
   // wake up callback
-  if (!(thread->inQueue.length)) uv_async_send(&thread->async_watcher);
+  //if (!(thread->inQueue.length)) uv_async_send(&thread->async_watcher);
+  uv_async_send(&thread->async_watcher);
 #ifdef WWT_PTHREAD
   return NULL;
 #endif
@@ -329,6 +330,10 @@ static void eventLoop (typeThread* thread) {
             if (job->typeEval.useStringObject) {
               str= job->typeEval.scriptText_StringObject;
               source= String::New(**str, (*str).length());
+
+
+              //fprintf(stdout, "Script text: %s\n", **str); 
+
               delete str;
             }
             else {
@@ -449,6 +454,7 @@ static void destroyaThread (typeThread* thread) {
   thread->JSObject->SetPointerInInternalField(0, NULL);
   thread->JSObject.Dispose();
 
+
   uv_unref((uv_handle_t*)&thread->async_watcher);
 
   if (freeThreadsQueue) {
@@ -467,6 +473,9 @@ static void destroyaThread (typeThread* thread) {
 // C callback that runs in the main nodejs thread. This is the one responsible for
 // calling the thread's JS callback.
 static void Callback (uv_async_t *watcher, int revents) {
+
+  //fprintf(stdout, "*** Callback\n");
+
   typeThread* thread= (typeThread*) watcher;
 
   if (thread->sigkill) {
@@ -517,7 +526,7 @@ static void Callback (uv_async_t *watcher, int revents) {
     }
     else if (job->jobType == kJobTypeEvent) {
 
-      //fprintf(stdout, "*** Callback\n");
+      // fprintf(stdout, "*** Callback: kJobTypeEvent\n");
 
       Local<Value> args[2];
 
@@ -588,6 +597,7 @@ static Handle<Value> Destroy (const Arguments &args) {
     //pthread_cancel(thread->thread);
     thread->sigkill= 1;
     uv_mutex_lock(&thread->IDLE_mutex);
+
     if (thread->IDLE) {
       uv_cond_signal(&thread->IDLE_cv);
     }
@@ -598,7 +608,36 @@ static Handle<Value> Destroy (const Arguments &args) {
 }
 
 
+static Handle<Value> Clear (const Arguments &args) {
+  HandleScope scope;
 
+  typeThread* thread= isAThread(args.This());
+  if (!thread) {
+    return ThrowException(Exception::TypeError(String::New("thread.clear(): the receiver must be a thread object")));
+  }
+
+  if (!thread->sigkill) {
+    uv_mutex_lock(&thread->IDLE_mutex);
+
+    thread->context->Exit();   
+    thread->context.Dispose();
+
+    thread->inQueue.first= thread->inQueue.last= NULL;
+    thread->outQueue.first= thread->outQueue.last= NULL;
+
+    thread->context = Context::New();
+    thread->context->Enter();
+
+    if (thread->IDLE) {
+      uv_cond_signal(&thread->IDLE_cv);
+    }
+    uv_mutex_unlock(&thread->IDLE_mutex);
+  }
+
+
+  return scope.Close(args.This());
+}
+ 
 
 
 
@@ -841,7 +880,8 @@ static Handle<Value> threadEmit (const Arguments &args) {
   } while (++i <= job->typeEvent.length);
 
   queue_push(qitem, &thread->outQueue);
-  if (!(thread->inQueue.length)) uv_async_send(&thread->async_watcher); // wake up callback
+  //fprintf(stdout, "outQueue length: %d\n", thread->outQueue.length);
+  if (!(thread->inQueue.length) || (thread->outQueue.length)) uv_async_send(&thread->async_watcher); // wake up callback
 
   //fprintf(stdout, "*** threadEmit END\n");
 
@@ -878,6 +918,7 @@ static Handle<Value> Create (const Arguments &args) {
     thread->JSObject->Set(id_symbol, Integer::New(thread->id));
     thread->JSObject->SetPointerInInternalField(0, thread);
     Local<Value> dispatchEvents= Script::Compile(String::New(kEvents_js))->Run()->ToObject()->CallAsFunction(thread->JSObject, 0, NULL);
+
     thread->dispatchEvents= Persistent<Object>::New(dispatchEvents->ToObject());
 
     uv_async_init(uv_default_loop(), &thread->async_watcher, Callback);
@@ -928,6 +969,7 @@ void Init (Handle<Object> target) {
   threadTemplate= Persistent<ObjectTemplate>::New(ObjectTemplate::New());
   threadTemplate->SetInternalFieldCount(1);
   threadTemplate->Set(id_symbol, Integer::New(0));
+  threadTemplate->Set(String::NewSymbol("clear"), FunctionTemplate::New(Clear));
   threadTemplate->Set(String::NewSymbol("eval"), FunctionTemplate::New(Eval));
   threadTemplate->Set(String::NewSymbol("load"), FunctionTemplate::New(Load));
   threadTemplate->Set(String::NewSymbol("emit"), FunctionTemplate::New(processEmit));
