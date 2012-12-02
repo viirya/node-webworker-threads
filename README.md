@@ -126,6 +126,8 @@ var thread= Threads.create();
 `thread.id` is a sequential thread serial number.
 ##### .load( absolutePath [, cb] )
 `thread.load( absolutePath [, cb] )` reads the file at `absolutePath` and `thread.eval(fileContents, cb)`.
+##### .clear( /* no arguments */ )
+`thread.destroy( /* no arguments */ )` clears the context of the thread.
 ##### .eval( program [, cb])
 `thread.eval( program [, cb])` converts `program.toString()` and eval()s it in the thread's global context, and (if provided) returns the completion value to `cb(err, completionValue)`.
 ##### .on( eventType, listener )
