@@ -40,32 +40,37 @@ t.clear();
 
 /// Define a callback
 var cb = function(err, result) {
-    if (err) throw err;
-    console.log("generator is done!");
-    t.destroy();
+    if (err)
+        console.log(err);
+    else {
+        console.log("generator is done!");
+        t.destroy();
+    }
 };
+
+var code = "if (typeof generateFibos == 'function') { console.log('generateFibos defined'); } else { console.log('generateFibos undefined.'); } generateFibos(40);";
 
 /// And we run the generator with a callback that will execute when the generator returns from its loop:
 /// Because we clear the context of the thread, the generator is undefined now.
-t.eval("if (typeof generateFibos == 'function') { generateFibos(4); } else { console.log('generateFibos undefined.'); }", cb);
+t.eval(code, cb);
 
 /// load the two functions again
 t.eval(fibo);
 t.eval(generateFibos);
  
 /// And we run the generator with a callback that will execute when the generator returns from its loop:
-t.eval("if (typeof generateFibos == 'function') { generateFibos(4); } else { console.log('generateFibos undefined.'); }", cb);
+t.eval(code, cb);
 
 
 /// ### Output
 /// 
 /// ```
+/// generateFibos undefined.
+/// generateFibos defined
+/// [Error: ReferenceError: generateFibos is not defined]
 /// fibo(1) = 1
 /// fibo(2) = 2
 /// fibo(3) = 3
 /// fibo(4) = 5
-/// ...
-/// fibo(39) = 102334155
-/// fibo(40) = 165580141
 /// generator is done!
 /// ```
